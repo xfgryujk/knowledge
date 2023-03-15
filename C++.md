@@ -870,6 +870,7 @@ C++20还提供了信号量`counting_semaphore`，允许同时有多个线程访�
 
 * 可能是`wait`在系统调用的时候收到了信号，系统调用被打断了
 * 可能一次唤醒了多个线程，第一个线程先拿到锁，修改了条件，然后第二个线程拿到锁时发现条件不成立了
+* 还跟操作系统底层实现有关，[参考](https://linux.die.net/man/3/pthread_cond_signal)
 
 ```c++
 bool flag = false;
