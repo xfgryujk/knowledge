@@ -1,5 +1,7 @@
 # goroutine
+
 ## 特点
+
 和其他语言的协程对比：
 
 * goroutine是有栈协程，而Python、JS的是无栈协程
@@ -10,11 +12,12 @@
     * 有可能隐式切换上下文，而其他语言的协程必须用`await`显式切换上下文
 * goroutine的栈大小不是固定的，可以按需增加和减小
 
-
 ## 调度
+
 [参考](https://draveness.me/golang/docs/part3-runtime/ch06-concurrency/golang-goroutine/)
 
 ### GPM模型
+
 GPM是Go运行时自己实现的调度系统
 
 * G（Goroutine）：存放goroutine信息、CPU寄存器、栈等信息
@@ -24,6 +27,7 @@ GPM是Go运行时自己实现的调度系统
 为什么需要P，而不是直接把运行队列放到M：为了方便M阻塞时（比如系统调用）可以方便地把运行队列交给其他的M
 
 ### 调度时机
+
 * 主动挂起：调用`runtime.gopark`
 * 系统调用：Go会在`syscall.Syscall`等系统调用封装函数中，插入`runtime.entersyscall`和`runtime.exitsyscall`
 * 协作式调度：Go会在每个函数开头插入调度点，使长时间运行的goroutine有机会被调度。sysmon线程会监控并抢占运行时间超过10ms的goroutine
