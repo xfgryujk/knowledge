@@ -184,3 +184,25 @@ void testFixedSizeMemoryPool() {
     pool.deallocate(ptr1);
     pool.deallocate(ptr2);
 }
+
+void testSharedPtr() {
+    SharedPtr<string> p1(new string("test"));
+    assert(p1.use_count() == 1);
+    assert(*p1 == "test");
+    assert(p1->size() == 4);
+    p1.reset();
+    assert(!p1);
+
+    SharedPtr<string> p2(new string("test"));
+    p1 = p2;
+    assert(p1.get() == p2.get());
+    assert(p1.use_count() == 2);
+
+    {
+        SharedPtr<string> p3(move(p2));
+        assert(!p2);
+        assert(p3.get() == p1.get());
+        assert(p3.use_count() == 2);
+    }
+    assert(p1.use_count() == 1);
+}
