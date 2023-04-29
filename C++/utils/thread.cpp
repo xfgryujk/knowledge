@@ -1,57 +1,5 @@
 #include "thread.h"
 
-void testThreadSafeQueue() {
-    ThreadSafeQueue<int> q1;
-    atomic<bool> is_end = false;
-    atomic<int> push_count = 0;
-    atomic<int> pop_count = 0;
-
-    auto producer = [&] {
-        for (int i = 0; i < 1000; i++) {
-            q1.push(i);
-            ++push_count;
-        }
-    };
-
-    auto consumer = [&] {
-        int tmp = 0;
-        while (!is_end || !q1.empty()) {
-            while (q1.pop(tmp)) {
-                ++pop_count;
-            }
-
-            if (!is_end) {
-                this_thread::sleep_for(1ms);
-            }
-        }
-    };
-
-    vector<thread> producer_threads, consumer_threads;
-    consumer_threads.emplace_back(consumer);
-    for (int i = 0; i < 10; i++) {
-        producer_threads.emplace_back(producer);
-    }
-    consumer_threads.emplace_back(consumer);
-    // for (int i = 0; i < 2; i++) {
-    //     consumer_threads.emplace_back(consumer);
-    // }
-
-    for (thread& t : producer_threads) {
-        t.join();
-    }
-    is_end = true;
-    for (thread& t : consumer_threads) {
-        t.join();
-    }
-    assert(push_count == pop_count);
-
-    ThreadSafeQueue<int> q2(2);
-    q2.push(1);
-    q2.push(2);
-    assert(!q2.push(3));
-    assert(q2.size() == 2);
-}
-
 void SpinLock::lock() {
     int failed_num = 0;
     while (is_locked.test_and_set()) {
@@ -84,6 +32,117 @@ void testSpinLock() {
     }
 
     lock.unlock();
+    for (thread& t : threads) {
+        t.join();
+    }
+}
+
+void SharedMutex::lock() {
+    // 读写都要先抢公共锁，实现公平竞争
+    common_mu.lock();
+    writer_mu.lock();
+}
+
+void SharedMutex::unlock() {
+    writer_mu.unlock();
+    common_mu.unlock();
+}
+
+void SharedMutex::lock_shared() {
+    // 读写都要先抢公共锁，实现公平竞争
+    lock_guard common_lock(common_mu);
+    // 第一个读者加写锁
+    lock_guard reader_lock(reader_mu);
+    if (reader_num++ == 0) {
+        // 如果有写者已经加锁，这里会阻塞，并且其他读者会阻塞在reader_lock
+        writer_mu.lock();
+    }
+}
+
+void SharedMutex::unlock_shared() {
+    // 最后一个读者解除写锁
+    lock_guard reader_lock(reader_mu);
+    if (--reader_num == 0) {
+        writer_mu.unlock();
+    }
+}
+
+void testSharedMutex() {
+    SharedMutex mu;
+    vector<int> arr;
+
+    auto reader = [&](int thread_idx) {
+        for (int i = 0; i < 10000; i++) {
+            int tmp = 0;
+            mu.lock_shared();
+            cout << "reader " << thread_idx << ' ' << i << '\n';
+            int num = min((int)arr.size(), 100);
+            for (int j = 0; j < num; j++) {
+                tmp += arr[j];
+            }
+            mu.unlock_shared();
+
+            this_thread::sleep_for(chrono::milliseconds(rand() % 5));
+        }
+    };
+
+    auto writer = [&](int thread_idx) {
+        for (int i = 0; i < 10000; i++) {
+            mu.lock();
+            cout << "writer " << thread_idx << ' ' << i << '\n';
+            // this_thread::sleep_for(200ms);
+            arr.push_back(i);
+            mu.unlock();
+
+            this_thread::sleep_for(chrono::milliseconds(rand() % 100));
+        }
+    };
+
+    vector<thread> threads;
+    for (int i = 0; i < 5; i++) {
+        threads.emplace_back(writer, i);
+        threads.emplace_back(reader, i);
+    }
+    for (thread& t : threads) {
+        t.join();
+    }
+
+    assert(arr.size() == 50000);
+}
+
+Semaphore::Semaphore(int _counter) : counter(_counter) {
+}
+
+void Semaphore::acquire(size_t dec_num) {
+    unique_lock lock(mu);
+    cv.wait(lock, [this, dec_num] { return counter >= dec_num; });
+    counter -= dec_num;
+}
+
+void Semaphore::release(size_t add_num) {
+    if (add_num == 0) {
+        return;
+    }
+    counter += add_num;
+    cv.notify_all();
+}
+
+void testSemaphore() {
+    Semaphore sem(2);
+
+    vector<thread> threads;
+    for (int i = 0; i < 5; i++) {
+        threads.emplace_back([&](int thread_idx) {
+            sem.acquire();
+            cout << thread_idx << '\n';
+        }, i);
+    }
+
+    this_thread::sleep_for(1s);
+    sem.release();
+    this_thread::sleep_for(1s);
+    sem.release(2);
+
     for (thread& t : threads) {
         t.join();
     }
@@ -162,6 +221,10 @@ void testThreadPool() {
     future<void> modify_str_fu = pool.submit(modify_str, ref(s));
     modify_str_fu.wait();
     assert(s == "456");
+
+    // 调用成员函数
+    future<size_t> size_fu = pool.submit(&string::size, &s);
+    assert(size_fu.get() == 3);
 
     // 传右值
     auto print = [&](const string& s) {

@@ -2,63 +2,6 @@
 
 #include "common_include.h"
 
-template<class T>
-class ThreadSafeQueue {
-private:
-    queue<T> q;
-    mutex mu;
-
-    // 0表示不限制
-    const size_t max_size = 0;
-
-public:
-    ThreadSafeQueue() = default;
-
-    ThreadSafeQueue(size_t _max_size) : max_size(_max_size) {
-    }
-
-    bool push(const T& value) {
-        lock_guard lock(mu);
-        if (max_size > 0 && q.size() >= max_size) {
-            return false;
-        }
-        q.emplace(value);
-        return true;
-    }
-
-    bool push(T&& value) {
-        lock_guard lock(mu);
-        if (max_size > 0 && q.size() >= max_size) {
-            return false;
-        }
-        q.emplace(move(value));
-        return true;
-    }
-
-    bool pop(T& res) {
-        lock_guard lock(mu);
-        if (q.empty()) {
-            return false;
-        }
-        res = move(q.front());
-        q.pop();
-        return true;
-    }
-
-    bool empty() {
-        lock_guard lock(mu);
-        return q.empty();
-    }
-
-    size_t size() {
-        // deque尺寸计算涉及好几个变量，还是加锁吧
-        lock_guard lock(mu);
-        return q.size();
-    }
-};
-
-void testThreadSafeQueue();
-
 class SpinLock {
 private:
     atomic_flag is_locked = ATOMIC_FLAG_INIT;
@@ -69,6 +12,42 @@ public:
 };
 
 void testSpinLock();
+
+class SharedMutex {
+private:
+    // 已经加锁的读者数
+    int reader_num = 0;
+    // 读者需要加的锁，用来保证操作reader_num和writer_mu的原子性
+    mutex reader_mu;
+    // 写者和第一个读者需要加的锁
+    mutex writer_mu;
+    // 读写都要加的锁，用来实现公平竞争。没有这个锁也行，但是会偏向读者，写者可能饥饿
+    mutex common_mu;
+
+public:
+    void lock();
+    void unlock();
+    void lock_shared();
+    void unlock_shared();
+};
+
+void testSharedMutex();
+
+// 条件变量实现的信号量，C++标准库没有信号量时可以使用
+class Semaphore {
+private:
+    atomic<int> counter = 0;
+    mutex mu;
+    condition_variable cv;
+
+public:
+    Semaphore(int _counter);
+
+    void acquire(size_t dec_num = 1);
+    void release(size_t add_num = 1);
+};
+
+void testSemaphore();
 
 class ThreadPool {
 private:
