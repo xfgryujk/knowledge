@@ -74,23 +74,20 @@ public:
         using Result = invoke_result_t<Callable, Args...>;
 
         // function要求底层必须能拷贝，这里只能用指针
-        auto task_ptr = new packaged_task<Result(Args...)>(forward<Callable>(callable));
-        future<Result> fu = task_ptr->get_future();
+        auto task_ptr = make_shared<packaged_task<Result(Args...)>>(forward<Callable>(callable));
+        // 为了保证调用时参数还没被销毁，这里用值捕获
+        auto callback = [=]() mutable {
+            invoke(*task_ptr, forward<Args>(args)...);
+        };
 
         {
             lock_guard lock(mu);
             assert(!is_shutdown);
-            task_queue.emplace(
-                // 为了保证调用时参数还没被销毁，这里用值捕获
-                [=]() mutable {
-                    invoke(*task_ptr, forward<Args>(args)...);
-                    delete task_ptr;
-                }
-            );
+            task_queue.emplace(move(callback));
         }
         cv.notify_one();
 
-        return fu;
+        return task_ptr->get_future();
     }
 };
 

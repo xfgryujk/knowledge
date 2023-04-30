@@ -199,6 +199,7 @@ void ThreadPool::worker() {
         }
 
         task();
+        task = nullptr;
     }
 }
 
