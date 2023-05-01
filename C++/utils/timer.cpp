@@ -13,10 +13,10 @@ bool HeapTimerManager::TimerPtrCmp::operator()(const TimerPtr& a, const TimerPtr
     return a->expire > b->expire;
 }
 
-HeapTimerManager::CancellablePtr HeapTimerManager::addTimer(time_t expire, function<void()> callback) {
+HeapTimerManager::TimerHandle HeapTimerManager::addTimer(time_t expire, function<void()> callback) {
     TimerPtr timer_ptr = make_shared<Timer>(expire, move(callback));
     timer_queue.emplace(timer_ptr);
-    return static_pointer_cast<Cancellable>(timer_ptr);
+    return static_pointer_cast<TimerHandleBase<Timer>>(timer_ptr);
 }
 
 void HeapTimerManager::update(time_t cur_time) {
@@ -87,7 +87,7 @@ TimeWheelTimerManager::TimeWheelTimerManager() :
     } {
 }
 
-TimeWheelTimerManager::CancellablePtr TimeWheelTimerManager::addTimer(uint32_t expire, function<void()> callback) {
+TimeWheelTimerManager::TimerHandle TimeWheelTimerManager::addTimer(uint32_t expire, function<void()> callback) {
     TimerPtr timer_ptr = make_shared<Timer>(expire, move(callback));
 
     for (int level = wheels.size() - 1; level >= 0; level--) {
@@ -110,7 +110,7 @@ TimeWheelTimerManager::CancellablePtr TimeWheelTimerManager::addTimer(uint32_t e
         break;
     }
 
-    return static_pointer_cast<Cancellable>(timer_ptr);
+    return static_pointer_cast<TimerHandleBase<Timer>>(timer_ptr);
 }
 
 void TimeWheelTimerManager::update(uint32_t cur_time) {

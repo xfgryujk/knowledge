@@ -2,15 +2,17 @@
 
 #include "common_include.h"
 
-class HeapTimerManager {
-public:
-    struct Cancellable {
-        virtual void cancel() = 0;
-    };
-    using CancellablePtr = shared_ptr<Cancellable>;
+// 利用CRTP消除虚函数表指针、虚函数调用带来的开销
+template<class T>
+struct TimerHandleBase {
+    void cancel() {
+        static_cast<T*>(this)->cancel();
+    }
+};
 
+class HeapTimerManager {
 private:
-    struct Timer : Cancellable {
+    struct Timer : TimerHandleBase<Timer> {
         time_t expire = 0;
         function<void()> callback;
         // priority_queue不能随机删除元素，只能加个取消标记了
@@ -18,10 +20,14 @@ private:
 
         Timer(time_t _expire, function<void()>&& _callback);
 
-        virtual void cancel() override;
+        void cancel();
     };
     using TimerPtr = shared_ptr<Timer>;
+public:
+    // 不想把Timer实现暴露到外部，外部只能获取到TimerHandle
+    using TimerHandle = shared_ptr<TimerHandleBase<Timer>>;
 
+private:
     struct TimerPtrCmp {
         bool operator()(const TimerPtr& a, const TimerPtr& b) const;
     };
@@ -29,21 +35,15 @@ private:
     priority_queue<TimerPtr, vector<TimerPtr>, TimerPtrCmp> timer_queue;
 
 public:
-    CancellablePtr addTimer(time_t expire, function<void()> callback);
+    TimerHandle addTimer(time_t expire, function<void()> callback);
     void update(time_t cur_time);
 };
 
 void testHeapTimerManager();
 
 class TimeWheelTimerManager {
-public:
-    struct Cancellable {
-        virtual void cancel() = 0;
-    };
-    using CancellablePtr = shared_ptr<Cancellable>;
-
 private:
-    struct Timer : Cancellable {
+    struct Timer : TimerHandleBase<Timer> {
         uint32_t expire = 0;
         function<void()> callback;
 
@@ -53,10 +53,14 @@ private:
 
         Timer(uint32_t _expire, function<void()>&& _callback);
 
-        virtual void cancel() override;
+        void cancel();
     };
     using TimerPtr = shared_ptr<Timer>;
+public:
+    // 不想把Timer实现暴露到外部，外部只能获取到TimerHandle
+    using TimerHandle = shared_ptr<TimerHandleBase<Timer>>;
 
+private:
     struct TimeWheel {
         // 索引在整数中的位置
         const uint32_t bit_offset = 0;
@@ -76,7 +80,7 @@ private:
 public:
     TimeWheelTimerManager();
 
-    CancellablePtr addTimer(uint32_t expire, function<void()> callback);
+    TimerHandle addTimer(uint32_t expire, function<void()> callback);
     void update(uint32_t cur_time);
 private:
     uint32_t getLastUpdateTime() const;
